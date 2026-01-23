@@ -4,411 +4,347 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 
+type HandleRow = {
+  id: string;
+  handle: string;
+  platform: string | null;
+};
+
 type LogRow = {
   id: string;
-  handle_id: string;
   sentiment: "good" | "neutral" | "bad";
   severity: "info" | "warning" | "critical";
   encounter: "raid" | "squad" | "trade" | "other";
   category: string;
   description: string;
   created_at: string;
+  handle_id: string;
   handles: {
     handle: string;
     platform: string | null;
   } | null;
 };
 
-export default function Page() {
+export default function Home() {
   // auth
   const [userEmail, setUserEmail] = useState<string | null>(null);
-
-  // feed
-  const [logs, setLogs] = useState<LogRow[]>([]);
-  const [loadingFeed, setLoadingFeed] = useState(false);
-  const [status, setStatus] = useState("");
-
-  // credibility markers
-  const [isFirstTimePoster, setIsFirstTimePoster] = useState(false);
-  const [sightingsByHandleId, setSightingsByHandleId] = useState<Record<string, number>>({});
 
   // login form
   const [email, setEmail] = useState("");
 
-  // search
-  const [searchHandle, setSearchHandle] = useState("");
-
-  // new transmission form
+  // submit form
   const [handle, setHandle] = useState("");
-  const [platform, setPlatform] = useState<string>("PC");
-  const [sentiment, setSentiment] = useState<"good" | "neutral" | "bad">("neutral");
-  const [severity, setSeverity] = useState<"info" | "warning" | "critical">("info");
-  const [encounter, setEncounter] = useState<"raid" | "squad" | "trade" | "other">("other");
-  const [category, setCategory] = useState("");
+  const [platform, setPlatform] = useState<string>("");
+  const [sentiment, setSentiment] = useState<LogRow["sentiment"]>("neutral");
+  const [severity, setSeverity] = useState<LogRow["severity"]>("info");
+  const [encounter, setEncounter] = useState<LogRow["encounter"]>("other");
+  const [category, setCategory] = useState("General");
   const [description, setDescription] = useState("");
-  const [submitting, setSubmitting] = useState(false);
 
-  const prettyEmail = useMemo(() => (userEmail ? `signed in as ${userEmail}` : "public feed"), [userEmail]);
+  // feed
+  const [logs, setLogs] = useState<LogRow[]>([]);
+  const [loadingFeed, setLoadingFeed] = useState(false);
 
-  const loadPosterStats = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user.id;
+  // ui status
+  const [status, setStatus] = useState("");
 
-    if (!userId) {
-      setIsFirstTimePoster(false);
-      return;
-    }
+  const trimmedHandle = useMemo(() => handle.trim(), [handle]);
 
-    const { count, error } = await supabase
-      .from("logs")
-      .select("id", { count: "exact", head: true })
-      .eq("created_by", userId);
+  // ---- auth bootstrap ----
+  useEffect(() => {
+    let mounted = true;
 
-    if (error) {
-      setIsFirstTimePoster(false);
-      return;
-    }
+    const init = async () => {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+      if (!mounted) return;
+      setUserEmail(session?.user?.email ?? null);
+    };
 
-    setIsFirstTimePoster((count ?? 0) === 0);
-  };
+    init();
 
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserEmail(session?.user?.email ?? null);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  // ---- public feed ----
   const loadFeed = async () => {
     setLoadingFeed(true);
     setStatus("");
 
     const { data, error } = await supabase
-      .from("logs")
-      .select(
-        `
-        id,
-        handle_id,
-        sentiment,
-        severity,
-        encounter,
-        category,
-        description,
-        created_at,
-        handles:handle_id (
-          handle,
-          platform
-        )
-      `
-      )
-      .order("created_at", { ascending: false })
-      .limit(25);
+  .from("logs")
+  .select(`
+    id,
+    sentiment,
+    severity,
+    encounter,
+    category,
+    description,
+    created_at,
+    handle_id,
+    handles:handle_id (
+      handle,
+      platform
+    )
+  `)
+  .order("created_at", { ascending: false })
+  .limit(25)
+  .returns<LogRow[]>();   // ✅ add this
 
-    setLoadingFeed(false);
+if (error) {
+  setStatus(`Feed error: ${error.message}`);
+  return;
+}
 
-    if (error) {
-      setStatus(`Feed error: ${error.message}`);
-      return;
-    }
+setLogs(data ?? []);      // ✅ no cast needed
 
-    const rows: LogRow[] = (data ?? []).map((r: any) => ({
-      id: r.id,
-      handle_id: r.handle_id,
-      sentiment: r.sentiment,
-      severity: r.severity,
-      encounter: r.encounter,
-      category: r.category,
-      description: r.description,
-      created_at: r.created_at,
-      handles: r.handles
-        ? {
-            handle: r.handles.handle,
-            platform: r.handles.platform,
-          }
-        : null,
-    }));
-
-    setLogs(rows);
-
-    // repeat sightings counts
-    const handleIds = Array.from(new Set(rows.map((r) => r.handle_id).filter(Boolean)));
-
-    if (handleIds.length > 0) {
-      const { data: countsData } = await supabase
-        .from("handle_counts")
-        .select("handle_id, sightings")
-        .in("handle_id", handleIds);
-
-      const map: Record<string, number> = {};
-      (countsData ?? []).forEach((c: any) => {
-        map[c.handle_id] = c.sightings;
-      });
-
-      setSightingsByHandleId(map);
-    }
   };
 
   useEffect(() => {
-    // initial session check
-    supabase.auth.getSession().then(({ data }) => {
-      setUserEmail(data.session?.user.email ?? null);
-    });
-
-    // listen for auth changes
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserEmail(session?.user.email ?? null);
-      // refresh badge + feed on auth transitions
-      loadPosterStats();
-      loadFeed();
-    });
-
-    // initial data load
     loadFeed();
-    loadPosterStats();
-
-    return () => {
-      sub.subscription.unsubscribe();
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const sendMagicLink = async () => {
+  // ---- auth actions ----
+  const signInWithGoogle = async () => {
     setStatus("");
-    const e = email.trim();
-    if (!e) return;
 
-    const { error } = await supabase.auth.signInWithOtp({
-      email: e,
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
       options: {
-        // IMPORTANT: set this to your deployed domain later
-        // For local dev, omit it so Supabase uses its default
+        // return to current origin (localhost or thesurfacelog.com)
+        redirectTo: `${window.location.origin}/`,
       },
     });
 
-    if (error) {
-      setStatus(`Login error: ${error.message}`);
+    if (error) setStatus(`Google sign-in error: ${error.message}`);
+  };
+
+  const sendMagicLink = async () => {
+    setStatus("");
+
+    const clean = email.trim();
+    if (!clean) {
+      setStatus("Enter an email first.");
       return;
     }
 
-    setStatus("Check your email for the login link.");
+    const { error } = await supabase.auth.signInWithOtp({
+      email: clean,
+      options: {
+        emailRedirectTo: `${window.location.origin}/`,
+      },
+    });
+
+    if (error) setStatus(`Email login error: ${error.message}`);
+    else setStatus("Magic link sent. Check your inbox.");
   };
 
   const signOut = async () => {
+    setStatus("");
     await supabase.auth.signOut();
   };
 
+  // ---- submit log (requires auth) ----
   const submitLog = async () => {
-    setStatus("");
+    setStatus("Submitting...");
 
-    const h = handle.trim();
-    if (!h) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const userId = sessionData.session?.user?.id;
+
+    if (!userId) {
+      setStatus("You must be signed in to submit.");
+      return;
+    }
+
+    if (!trimmedHandle) {
       setStatus("Handle is required.");
       return;
     }
+
     if (!description.trim()) {
       setStatus("Description is required.");
       return;
     }
 
-    setSubmitting(true);
+    const cleanHandle = trimmedHandle;
+    const cleanPlatform = platform.trim() || null;
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const userId = sessionData.session?.user.id;
-
-    if (!userId) {
-      setSubmitting(false);
-      setStatus("You must be signed in to transmit.");
-      return;
-    }
-
-    // 1) ensure handle exists (case-insensitive match)
-    const { data: existingHandle, error: handleErr } = await supabase
+    // 1) Find existing handle rows (case-insensitive, partial match)
+    const { data: matches, error: findErr } = await supabase
       .from("handles")
       .select("id, handle, platform")
-      .ilike("handle", h)
-      .maybeSingle();
+      .ilike("handle", cleanHandle) // exact-ish, but case-insensitive
+      .limit(10);
 
-    if (handleErr) {
-      setSubmitting(false);
-      setStatus(`Handle lookup error: ${handleErr.message}`);
+    if (findErr) {
+      setStatus(`Handle lookup error: ${findErr.message}`);
       return;
     }
 
-    let handleId = existingHandle?.id as string | undefined;
+    // Prefer an exact normalized match if it exists, otherwise create.
+    // (If you later add handle_normalized, we can tighten this further.)
+    const existingExact = (matches ?? []).find(
+      (h: HandleRow) => h.handle.toLowerCase() === cleanHandle.toLowerCase()
+    );
 
-    if (!handleId) {
-      const { data: newHandle, error: createHandleErr } = await supabase
+    let handleId: string;
+
+    if (existingExact?.id) {
+      handleId = existingExact.id;
+    } else {
+      // 2) Create handle row
+      const { data: created, error: createErr } = await supabase
         .from("handles")
-        .insert([{ handle: h, platform }])
+        .insert({
+          handle: cleanHandle,
+          platform: cleanPlatform,
+        })
         .select("id")
         .single();
 
-      if (createHandleErr) {
-        setSubmitting(false);
-        setStatus(`Handle create error: ${createHandleErr.message}`);
+      if (createErr) {
+        setStatus(`Create handle error: ${createErr.message}`);
         return;
       }
 
-      handleId = newHandle.id;
+      handleId = created.id;
     }
 
-    // 2) insert log
-    const { error: logErr } = await supabase.from("logs").insert([
-      {
-        handle_id: handleId,
-        sentiment,
-        severity,
-        encounter,
-        category: category.trim(),
-        description: description.trim(),
-        created_by: userId,
-      },
-    ]);
-
-    setSubmitting(false);
+    // 3) Create log row
+    const { error: logErr } = await supabase.from("logs").insert({
+      handle_id: handleId,
+      sentiment,
+      severity,
+      encounter,
+      category,
+      description: description.trim(),
+      // If you have a user_id column, add it here:
+      // user_id: userId,
+    });
 
     if (logErr) {
-      setStatus(`Transmit error: ${logErr.message}`);
+      setStatus(`Submit error: ${logErr.message}`);
       return;
     }
 
-    // reset
-    setHandle("");
-    setCategory("");
+    setStatus("Transmission logged.");
     setDescription("");
-    setSentiment("neutral");
-    setSeverity("info");
-    setEncounter("other");
-
-    setStatus("Transmission sent.");
-
-    // refresh markers + feed
-    loadPosterStats();
-    loadFeed();
-  };
-
-  const goSearch = () => {
-    const q = searchHandle.trim();
-    if (!q) return;
-    window.location.href = `/search?q=${encodeURIComponent(q)}`;
+    setHandle("");
+    setPlatform("");
+    await loadFeed();
   };
 
   return (
-    <main className="min-h-screen bg-black text-green-400 p-6">
+    <main className="min-h-screen bg-black text-green-400 p-6 font-mono">
       <div className="mx-auto max-w-5xl">
-        <header className="mb-8 flex items-end justify-between gap-4">
+        <header className="flex items-start justify-between gap-6">
           <div>
-            <h1 className="text-4xl font-mono tracking-wide">THE SURFACE LOG</h1>
-            <p className="mt-2 font-mono text-sm text-green-200/70">{prettyEmail}</p>
+            <h1 className="text-3xl tracking-widest text-green-300">
+              THE SURFACE LOG
+            </h1>
+            <p className="mt-2 text-sm text-green-300/60">
+              community transmissions • verify nothing • log everything
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="text-right">
             {userEmail ? (
-              <button
-                onClick={signOut}
-                className="font-mono text-sm border border-green-700/50 rounded-md px-3 py-2 hover:bg-green-900/20 transition"
-              >
-                sign out
-              </button>
-            ) : null}
+              <div className="text-sm text-green-200/80">
+                <div>signed in as</div>
+                <div className="text-green-200">{userEmail}</div>
+                <button
+                  onClick={signOut}
+                  className="mt-2 border border-green-700/40 rounded px-3 py-1 hover:bg-green-900/20"
+                >
+                  sign out
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-green-200/80">not signed in</div>
+            )}
           </div>
         </header>
 
-        {/* Search */}
-        <div className="mt-4 max-w-md">
-          <div className="flex gap-2">
-            <input
-              value={searchHandle}
-              onChange={(e) => setSearchHandle(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") goSearch();
-              }}
-              placeholder="search handle…"
-              className="flex-1 bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
-            />
-            <button
-              onClick={goSearch}
-              className="border border-green-700/50 rounded-md px-4 py-2 font-mono hover:bg-green-900/20 transition"
-            >
-              search
-            </button>
-          </div>
+        {/* Divider spacer */}
+        <div className="my-8 relative overflow-visible">
+          <div className="w-full border-t border-transparent" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-[2px] bg-green-100 blur-[2px] scan-glow" />
         </div>
 
-        {/* Divider (space + scan-glow) */}
-        <div className="my-8 h-8 relative overflow-visible">
-          <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 border-t border-transparent" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-1/3 h-[2px] bg-green-100 blur-[2px] scan-glow" />
-        </div>
-
-        {/* Login / Access terminal */}
+        {/* Login block (only when logged out) */}
         {!userEmail && (
           <section className="mb-8 grid gap-3 max-w-md border border-green-700/40 rounded-lg p-4">
-            <div className="font-mono text-sm text-green-200/80">access terminal</div>
-
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="email address"
-              className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
-            />
+            <div className="font-mono text-sm text-green-200/80">
+              access terminal
+            </div>
 
             <button
-              onClick={sendMagicLink}
-              className="border border-green-700/50 rounded-md px-4 py-2 font-mono hover:bg-green-900/20 transition"
+              onClick={signInWithGoogle}
+              className="border border-green-700/40 rounded px-3 py-2 font-mono text-sm hover:bg-green-900/20"
             >
-              send login link
+              sign in with google
             </button>
 
-            <div className="font-mono text-xs text-green-200/60">
-              logs are public • transmitting requires login
+            <div className="text-green-200/40 text-xs">or</div>
+
+            <div className="grid gap-2">
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email"
+                className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200 placeholder:text-green-200/30"
+              />
+              <button
+                onClick={sendMagicLink}
+                className="border border-green-700/40 rounded px-3 py-2 font-mono text-sm hover:bg-green-900/20"
+              >
+                send magic link
+              </button>
             </div>
           </section>
         )}
 
-        {/* New Transmission */}
-        {userEmail && (
-          <section className="mb-10 border border-green-700/40 rounded-lg p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="font-mono text-xl text-green-200">new transmission</h2>
-                {isFirstTimePoster && (
-                  <p className="mt-1 font-mono text-xs text-green-200/70">
-                    first transmission • keep it factual
-                  </p>
-                )}
-              </div>
+        {/* Submission block (requires login) */}
+        <section className="mb-8 border border-green-700/40 rounded-lg p-4">
+          <div className="text-green-200/80 text-sm mb-3">new transmission</div>
+
+          {!userEmail ? (
+            <div className="text-green-200/50 text-sm">
+              sign in to submit transmissions.
             </div>
+          ) : (
+            <div className="grid gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input
+                  value={handle}
+                  onChange={(e) => setHandle(e.target.value)}
+                  placeholder="handle"
+                  className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200 placeholder:text-green-200/30"
+                />
 
-            <div className="mt-4 grid gap-3">
-              <input
-                value={handle}
-                onChange={(e) => setHandle(e.target.value)}
-                placeholder="handle"
-                className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <select
+                <input
                   value={platform}
                   onChange={(e) => setPlatform(e.target.value)}
-                  className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
-                >
-                  <option value="PC">PC</option>
-                  <option value="PS">PS</option>
-                  <option value="XBOX">XBOX</option>
-                  <option value="OTHER">OTHER</option>
-                </select>
-
-                <select
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value as any)}
-                  className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
-                >
-                  <option value="info">info</option>
-                  <option value="warning">warning</option>
-                  <option value="critical">critical</option>
-                </select>
+                  placeholder="platform (optional)"
+                  className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200 placeholder:text-green-200/30"
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <select
                   value={sentiment}
-                  onChange={(e) => setSentiment(e.target.value as any)}
-                  className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
+                  onChange={(e) =>
+                    setSentiment(e.target.value as LogRow["sentiment"])
+                  }
+                  className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200"
                 >
                   <option value="good">good</option>
                   <option value="neutral">neutral</option>
@@ -416,9 +352,23 @@ export default function Page() {
                 </select>
 
                 <select
+                  value={severity}
+                  onChange={(e) =>
+                    setSeverity(e.target.value as LogRow["severity"])
+                  }
+                  className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200"
+                >
+                  <option value="info">info</option>
+                  <option value="warning">warning</option>
+                  <option value="critical">critical</option>
+                </select>
+
+                <select
                   value={encounter}
-                  onChange={(e) => setEncounter(e.target.value as any)}
-                  className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
+                  onChange={(e) =>
+                    setEncounter(e.target.value as LogRow["encounter"])
+                  }
+                  className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200"
                 >
                   <option value="raid">raid</option>
                   <option value="squad">squad</option>
@@ -430,79 +380,96 @@ export default function Page() {
               <input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="category (short label)"
-                className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
+                placeholder="category (e.g., Griefing, Helpful, Scam, etc.)"
+                className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200 placeholder:text-green-200/30"
               />
 
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="describe what happened…"
+                placeholder="details..."
                 rows={4}
-                className="bg-black border border-green-700/50 rounded-md p-2 text-green-200 font-mono"
+                className="bg-black border border-green-700/40 rounded px-3 py-2 text-green-200 placeholder:text-green-200/30"
               />
 
-              <button
-                onClick={submitLog}
-                disabled={submitting}
-                className="border border-green-700/50 rounded-md px-4 py-2 font-mono hover:bg-green-900/20 transition disabled:opacity-50"
-              >
-                {submitting ? "transmitting…" : "transmit"}
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={submitLog}
+                  className="border border-green-700/40 rounded px-3 py-2 hover:bg-green-900/20"
+                >
+                  submit
+                </button>
+                <button
+                  onClick={loadFeed}
+                  className="border border-green-700/40 rounded px-3 py-2 hover:bg-green-900/20"
+                >
+                  refresh feed
+                </button>
+              </div>
             </div>
-          </section>
-        )}
+          )}
+        </section>
 
-        {/* Feed */}
-        <section className="border border-green-700/40 rounded-lg p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-mono text-lg text-green-200">live feed</h2>
-            <div className="font-mono text-sm text-green-200/70">
-              {loadingFeed ? "loading…" : `${logs.length} shown`}
+        {/* Feed (public) */}
+        <section className="border border-green-700/40 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-green-200/80 text-sm">latest logs</div>
+            <div className="text-green-200/50 text-xs">
+              {loadingFeed ? "loading..." : `${logs.length} shown`}
             </div>
           </div>
 
-          {status && <p className="font-mono text-sm text-green-200/80 mb-4">{status}</p>}
-
-          <div className="grid gap-3">
-            {logs.map((l) => (
-              <article key={l.id} className="border border-green-700/30 rounded-md p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="font-mono">
+          {logs.length === 0 ? (
+            <div className="text-green-200/50 text-sm">no transmissions yet</div>
+          ) : (
+            <div className="grid gap-3">
+              {logs.map((l) => (
+                <div
+                  key={l.id}
+                  className="border border-green-700/30 rounded p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="text-green-200">
                       <Link
-                        href={`/handle/${encodeURIComponent(l.handles?.handle ?? "unknown")}`}
-                        className="hover:underline"
+                        className="underline decoration-green-700/40 hover:decoration-green-400"
+                        href={`/handle/${encodeURIComponent(
+                          l.handles?.handle ?? "unknown"
+                        )}`}
                       >
                         {l.handles?.handle ?? "unknown"}
                       </Link>
                       {l.handles?.platform ? (
-                        <span className="text-green-200/60"> • {l.handles.platform}</span>
+                        <span className="text-green-200/50">
+                          {" "}
+                          • {l.handles.platform}
+                        </span>
                       ) : null}
                     </div>
-                    <div className="text-green-200/60 text-sm">
+
+                    <div className="text-green-200/40 text-xs">
                       {new Date(l.created_at).toLocaleString()}
                     </div>
-                    <div className="font-mono text-xs text-green-200/60 mt-1">
-                      sightings: {sightingsByHandleId[l.handle_id] ?? 1}
-                    </div>
                   </div>
 
-                  <div className="font-mono text-sm text-green-200/80 text-right">
-                    {l.severity} • {l.sentiment}
-                    <div className="text-green-200/60">{l.encounter} • {l.category}</div>
+                  <div className="mt-1 text-xs text-green-200/60 flex flex-wrap gap-2">
+                    <span>[{l.sentiment}]</span>
+                    <span>[{l.severity}]</span>
+                    <span>[{l.encounter}]</span>
+                    <span>[{l.category}]</span>
+                  </div>
+
+                  <div className="mt-2 text-green-100/90 text-sm">
+                    {l.description}
                   </div>
                 </div>
-
-                <p className="mt-3 text-green-200/90 whitespace-pre-wrap">{l.description}</p>
-              </article>
-            ))}
-
-            {!loadingFeed && logs.length === 0 && (
-              <div className="font-mono text-green-200/70">no transmissions yet</div>
-            )}
-          </div>
+              ))}
+            </div>
+          )}
         </section>
+
+        {status ? (
+          <div className="mt-4 text-sm text-green-200/70">{status}</div>
+        ) : null}
       </div>
     </main>
   );
