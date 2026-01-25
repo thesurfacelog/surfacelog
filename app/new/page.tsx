@@ -196,6 +196,17 @@ export default function NewTransmissionPage() {
             >
               send magic link
             </button>
+            <div className="mt-2 text-[16px] text-red-300/90">
+  By signing up / signing in, you agree to the site rules and data policy.
+</div>
+
+<Link
+  href="/rules"
+  className="inline-flex items-center justify-center text-xs border border-green-700/40 rounded px-3 py-2 hover:bg-green-900/20"
+>
+  view rules & disclaimers →
+</Link>
+
           </section>
         ) : null}
 

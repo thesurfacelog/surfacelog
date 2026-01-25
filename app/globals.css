@@ -146,3 +146,17 @@ body {
   81% { --sx: 520px;  --sy: 1px;  --so: 0.0; }
   82% { --sx: -140px; --sy: -2px; --so: 1; }
 }
+
+/* Watchlist pulse */
+@keyframes redPulse {
+  0%, 100% {
+    box-shadow: 0 0 18px rgba(255, 0, 0, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(255, 0, 0, 0.35);
+  }
+}
+
+.watchlist-pulse {
+  animation: redPulse 4s ease-in-out infinite;
+}
