@@ -14,6 +14,8 @@ type FeedRow = {
   description: string;
   created_at: string;
   handle_id: string;
+  hidden?: boolean;
+  flags_count?: number;
   handles: {
     handle: string;
     platform: string | null;
@@ -44,7 +46,7 @@ function LeaderList({
     accent === "red" ? "text-red-400/80" : "text-green-200/80";
   const boxClass =
     accent === "red"
-      ? "border border-red-700/50 bg-red-950/10 shadow-[0_0_20px_rgba(255,0,0,0,0.14"
+      ? "border border-red-700/50 bg-red-950/10 shadow-[0_0_20px_rgba(255,0,0,0.14)]"
       : "border border-green-700/40";
 
   return (
@@ -88,7 +90,7 @@ function LeaderList({
 export default function Home() {
   const router = useRouter();
 
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<FeedRow[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [status, setStatus] = useState("");
 
@@ -101,45 +103,98 @@ export default function Home() {
   const [most7d, setMost7d] = useState<LeaderRow[]>([]);
   const [most24h, setMost24h] = useState<LeaderRow[]>([]);
   const [nicest, setNicest] = useState<LeaderRow[]>([]);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [flaggedByMe, setFlaggedByMe] = useState<Set<string>>(new Set());
+
+  const loadMyFlagsForFeed = async (logIds: string[]) => {
+  const { data: sess } = await supabase.auth.getSession();
+  const uid = sess.session?.user?.id;
+
+  if (!uid || logIds.length === 0) {
+    setFlaggedByMe(new Set());
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("log_flags")
+    .select("log_id")
+    .eq("user_id", uid)
+    .in("log_id", logIds);
+
+  if (error) {
+    setFlaggedByMe(new Set());
+    return;
+  }
+
+  setFlaggedByMe(new Set((data ?? []).map((r: any) => String(r.log_id))));
+};
 
   const loadFeed = async () => {
-    setLoadingFeed(true);
-    setStatus("");
+  setLoadingFeed(true);
+  setStatus("");
 
-    const { data, error } = await supabase
-      .from("logs")
-      .select(
-        `
-        id,
-        sentiment,
-        severity,
-        encounter,
-        category,
-        description,
-        created_at,
-        handle_id,
-        handles:handle_id (
-          handle,
-          platform
-        )
+  const { data, error } = await supabase
+    .from("logs")
+    .select(
       `
+      id,
+      handle_id,
+      sentiment,
+      severity,
+      encounter,
+      category,
+      description,
+      created_at,
+      hidden,
+      handles:handle_id (
+        handle,
+        platform
       )
-      .order("created_at", { ascending: false })
-      .limit(25);
+    `
+    )
+    .order("created_at", { ascending: false })
+    .limit(25);
 
-    setLoadingFeed(false);
+  setLoadingFeed(false);
 
-    if (error) {
-      setStatus(`Feed error: ${error.message}`);
-      return;
-    }
+  if (error) {
+    setStatus(`Feed error: ${error.message}`);
+    return;
+  }
 
-    setLogs(data ?? []);
-  };
+  // ✅ Use a typed variable instead of "as FeedRow[]"
+  const rows: FeedRow[] = (data ?? []).map((r: any) => ({
+    id: String(r.id),
+    handle_id: String(r.handle_id),
+    sentiment: r.sentiment,
+    severity: r.severity,
+    encounter: r.encounter,
+    category: String(r.category ?? ""),
+    description: String(r.description ?? ""),
+    created_at: String(r.created_at),
+    hidden: Boolean(r.hidden),
+    flags_count: typeof r.flags_count === "number" ? r.flags_count : undefined,
+    handles: r.handles
+      ? {
+          handle: String(r.handles.handle),
+          platform: r.handles.platform ? String(r.handles.platform) : null,
+        }
+      : null,
+  }));
+
+  setLogs(rows);
+  await loadMyFlagsForFeed(rows.map((x) => x.id));
+};
+
+  const loadSession = async () => {
+  const { data } = await supabase.auth.getSession();
+  setUserEmail(data.session?.user?.email ?? null);
+};
 
   const loadLeaderboards = async () => {
     setLoadingBoards(true);
     setStatus("");
+
 
     // NOTE: this assumes you have views/RPCs already wired OR you’re doing these counts elsewhere.
     // If your current build already works, keep these calls consistent with what you have now.
@@ -242,6 +297,10 @@ export default function Home() {
   useEffect(() => {
     loadFeed();
     loadLeaderboards();
+    loadSession();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => loadSession());
+    return () => sub.subscription.unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -252,6 +311,74 @@ export default function Home() {
   };
 
   const feedCountLabel = useMemo(() => `${logs.length} shown`, [logs.length]);
+
+  const flagLog = async (logId: string) => {
+  setStatus("");
+
+  const { data: sess } = await supabase.auth.getSession();
+  const uid = sess.session?.user?.id;
+
+  if (!uid) {
+    setStatus("Sign in to flag posts.");
+    return;
+  }
+
+  // UI guard
+  if (flaggedByMe.has(logId)) {
+    setStatus("You already flagged this post.");
+    return;
+  }
+
+  const { error } = await supabase.from("log_flags").insert({
+    log_id: logId,   // ✅ string
+    user_id: uid,
+  });
+
+  if (error) {
+    if (error.code === "23505") {
+      setFlaggedByMe(new Set([...Array.from(flaggedByMe), logId]));
+      setStatus("You already flagged this post.");
+      return;
+    }
+    setStatus(`Flag error: ${error.message}`);
+    return;
+  }
+
+  setFlaggedByMe(new Set([...Array.from(flaggedByMe), logId]));
+  await loadFeed();
+};
+
+const openDispute = async (logId: string) => {
+  setStatus("");
+
+  const { data: sess } = await supabase.auth.getSession();
+  const uid = sess.session?.user?.id;
+
+  if (!uid) {
+    setStatus("Sign in to dispute/correct a post.");
+    return;
+  }
+
+  const msg = window.prompt(
+    "What’s wrong with this post, and what should be corrected?"
+  );
+  if (!msg || !msg.trim()) return;
+
+  const { error } = await supabase.from("log_disputes").insert({
+    log_id: logId,   // ✅ string
+    user_id: uid,
+    message: msg.trim(),
+  });
+
+  if (error) {
+    setStatus(`Dispute error: ${error.message}`);
+    return;
+  }
+
+  setStatus("Dispute submitted. Thank you.");
+};
+
+
 
   return (
     <main className="min-h-screen bg-black text-green-300 font-mono px-4 py-10">
@@ -287,7 +414,6 @@ export default function Home() {
 
         </div>
     
-
         {/* SEARCH BAR (restored) */}
         <div className="mt-6 max-w-2xl">
           <div className="text-xs text-green-200/70 mb-2">search player handle</div>
@@ -375,6 +501,39 @@ export default function Home() {
                     <div className="mt-2 text-green-100/90 text-sm">
                       {l.description}
                     </div>
+                    {/* flag + dispute actions */}
+                    <div className="mt-3 flex items-center gap-2 text-xs">
+                      <button
+                        onClick={() => flagLog(l.id)}
+                        disabled={!userEmail || flaggedByMe.has(l.id)}
+                        className={`border rounded px-2 py-1 transition
+                          ${
+                            flaggedByMe.has(l.id)
+                              ? "border-red-700/30 text-red-300/40 cursor-not-allowed"
+                              : "border-red-700/60 text-red-200 hover:bg-red-900/20"
+                          }
+                          ${!userEmail ? "opacity-60 cursor-not-allowed" : ""}
+                        `}
+                          title={
+                          !userEmail
+                            ? "Sign in to flag"
+                            : flaggedByMe.has(l.id)
+                            ? "You already flagged this post"
+                            : "Flag this post"
+                        }
+                     >
+                        {flaggedByMe.has(l.id) ? "flagged" : "flag"}
+                      </button>
+
+                      <button
+                        onClick={() => openDispute(l.id)}
+                        disabled={!userEmail}
+                        className="border border-green-700/40 rounded px-2 py-1 hover:bg-green-900/20 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                        title={!userEmail ? "Sign in to dispute/correct" : "Request correction"}
+                      >
+                        dispute
+                     </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -387,7 +546,7 @@ export default function Home() {
             <div className="flex items-center justify-between mb-3">
               <div className="grid gap-3 text-xs text-red-400/80">{feedCountLabel}</div>
             </div>
-            < div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-4"> 
+            <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-4"> 
                   🔥 Today's Heat (24 hours)
                   <LeaderList
                     title="today’s heat (24 hours)"
@@ -397,12 +556,12 @@ export default function Home() {
                   </div>
           {/* WATCHLIST (renamed + aligned + same width) */}
           <div className="flex items-center justify-between">
-              <div className="font-semibold text-[24px] text-red-400/80 tracking-wider">
+              <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-2">
               ⚠ Speranza Watchlist
           </div>
           <button onClick={loadLeaderboards}
           disabled={loadingBoards}
-          className="text-red-300/60 border border-red-800/80 rounded px-2 py-1 hover:bg-red-300/8- disabled:opacity-50">
+          className="text-red-300/60 border border-red-800/80 rounded px-2 py-1 hover:bg-red-300/80 disabled:opacity-50">
             {loadingBoards ? "loading..." : "refresh"}
           </button>
           </div>
