@@ -378,8 +378,6 @@ const openDispute = async (logId: string) => {
   setStatus("Dispute submitted. Thank you.");
 };
 
-
-
   return (
     <main className="min-h-screen bg-black text-green-300 font-mono px-4 py-10">
       <div className="mx-auto max-w-6xl">
@@ -546,7 +544,7 @@ const openDispute = async (logId: string) => {
             <div className="flex items-center justify-between mb-3">
               <div className="grid gap-3 text-xs text-red-400/80">{feedCountLabel}</div>
             </div>
-            <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-4"> 
+            <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-4 watchlist-pulse"> 
                   🔥 Today's Heat (24 hours)
                   <LeaderList
                     title="today’s heat (24 hours)"
