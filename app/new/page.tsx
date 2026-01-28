@@ -88,33 +88,71 @@ export default function NewTransmissionPage() {
     }
 
     try {
-      // ---- 1) UPSERT handle (prevents duplicate handle errors)
+      // ---- 1) Resolve handle id (safe even if unique constraint is on different columns)
       const normalized = trimmedHandle.toLowerCase();
       const platformClean = platform.trim() || null;
 
-      // IMPORTANT:
-      // This assumes your UNIQUE constraint is on `handle_normalized`.
-      // If your unique constraint is on `handle`, change onConflict to: "handle"
-      // If it's on (handle_normalized, platform), use: "handle_normalized,platform"
-      const { data: handleRow, error: handleErr } = await supabase
-        .from("handles")
-        .upsert(
-          {
-            handle: trimmedHandle,
-            handle_normalized: normalized,
-            platform: platformClean,
-          },
-          { onConflict: "handle_normalized" }
-        )
-        .select("id")
-        .single();
+      let handleId: string | null = null;
 
-      if (handleErr) {
-        setStatus(`Handle upsert error: ${handleErr.message}`);
+      // A) Try to find by normalized handle first
+      const { data: found, error: findErr } = await supabase
+        .from("handles")
+        .select("id")
+        .eq("handle_normalized", normalized)
+        .maybeSingle();
+
+      if (findErr) {
+        setStatus(`Handle lookup error: ${findErr.message}`);
         return;
       }
 
-      const handleId = String(handleRow.id);
+      if (found?.id) {
+        handleId = String(found.id);
+      } else {
+        // B) Try to insert
+        const { data: created, error: createErr } = await supabase
+          .from("handles")
+          .insert({
+            handle: trimmedHandle,
+            handle_normalized: normalized,
+            platform: platformClean,
+          })
+          .select("id")
+          .single();
+
+        if (createErr) {
+          // 23505 = unique constraint violation
+          if (createErr.code === "23505") {
+            // C) Another insert won the race — re-fetch id
+            const { data: again, error: againErr } = await supabase
+              .from("handles")
+              .select("id")
+              .or(`handle_normalized.eq.${normalized},handle.eq.${trimmedHandle}`)
+              .maybeSingle();
+
+            if (againErr || !again?.id) {
+              setStatus(
+                `Handle exists but could not re-fetch id: ${
+                  againErr?.message ?? "unknown error"
+                }`
+              );
+              return;
+            }
+
+            handleId = String(again.id);
+          } else {
+            setStatus(`Handle create error: ${createErr.message}`);
+            return;
+          }
+        } else {
+          handleId = String(created.id);
+        }
+      }
+
+      if (!handleId) {
+        setStatus("Could not resolve handle id.");
+        return;
+      }
 
       // ---- 2) Insert log
       const { error: logErr } = await supabase.from("logs").insert({
