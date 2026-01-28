@@ -308,6 +308,18 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const purgeSession = async () => {
+  setStatus("");
+  try {
+    await supabase.auth.signOut();
+  } catch {
+    // ignore
+  }
+  localStorage.clear();
+  sessionStorage.clear();
+  location.reload();
+};
+
   const doSearch = () => {
     const trimmed = q.trim();
     if (!trimmed) return;
