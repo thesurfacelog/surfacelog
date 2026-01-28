@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 
+
 type FeedRow = {
   id: string;
   sentiment: "good" | "neutral" | "bad";
@@ -36,18 +37,21 @@ function LeaderList({
   rows,
   rightValue,
   accent = "red",
+  bordered = true,
 }: {
   title: string;
   rows: LeaderRow[];
   rightValue: (r: LeaderRow) => string;
-  accent?: "red" | "green"
+  accent?: "red" | "green";
+  bordered?: boolean;
 }) {
+
   const titleClass =
     accent === "red" ? "text-red-400/80" : "text-green-200/80";
   const boxClass =
-    accent === "red"
-      ? "border border-red-700/50 bg-red-950/10 shadow-[0_0_20px_rgba(255,0,0,0.14)]"
-      : "border border-green-700/40";
+  accent === "red"
+    ? `${bordered ? "border border-red-700/50" : ""} bg-red-950/10 shadow-[0_0_20px_rgba(255,0,0,0.14)]`
+    : `${bordered ? "border border-green-700/40" : ""} bg-green-950/10`;
 
   return (
     //right column
@@ -411,6 +415,22 @@ const openDispute = async (logId: string) => {
 </div>
 
         </div>
+
+        <div className="mt-4 rounded border border-green-700/40 bg-green-950/10 px-3 py-2 text-xs text-green-200/70">
+  <strong className="text-green-200/90">Beta notice:</strong>{" "}
+  This project is new and evolving. Expect rough edges — and regular improvements.
+
+  <div className="mt-2 rounded bg-black/70 px-3 py-2 text-[11px] text-green-200/60 leading-snug">
+  <div className="font-mono">
+    <span className="text-green-200/80">[INFO]</span>{" "}
+    <strong>What this is:</strong> a community reporting board.
+  </div>
+  <div className="font-mono">
+    <span className="text-green-200/80">[INFO]</span>{" "}
+    <strong>What it isn’t:</strong> official moderation, verified truth, or a ban system.
+  </div>
+</div>
+</div>
     
         {/* SEARCH BAR (restored) */}
         <div className="mt-6 max-w-2xl">
@@ -538,56 +558,88 @@ const openDispute = async (logId: string) => {
             )}
           </section>
           
-          {/*right block */}
-          {/* Seperate mini "today's heat" block ABOVE the watchlist */}
-            <aside className="border border-red-800/80 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="grid gap-3 text-xs text-red-400/80">{feedCountLabel}</div>
-            </div>
-            <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-4 watchlist-pulse"> 
-                  🔥 Today's Heat (24 hours)
-                  <LeaderList
-                    title="today’s heat (24 hours)"
-                    rows={most24h}
-                    rightValue={(r) => String(r.reports_24h ?? 0)}
-                  />
-                  </div>
-          {/* WATCHLIST (renamed + aligned + same width) */}
-          <div className="flex items-center justify-between">
-              <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-2">
-              ⚠ Speranza Watchlist
-          </div>
-          <button onClick={loadLeaderboards}
-          disabled={loadingBoards}
-          className="text-red-300/60 border border-red-800/80 rounded px-2 py-1 hover:bg-red-300/80 disabled:opacity-50">
-            {loadingBoards ? "loading..." : "refresh"}
-          </button>
-          </div>
+         {/* right block */}
+<div>
+  {/* Today's Heat ABOVE the bordered watchlist */}
+  <div className="font-semibold text-[24px] text-red-400/80 gap-2 mb-4 watchlist-pulse">
+    🔥 Today's Heat (24 hours)
+    <LeaderList
+      title="today’s heat (24 hours)"
+      rows={most24h}
+      rightValue={(r) => String(r.reports_24h ?? 0)}
+      bordered={false}
+    />
+  </div>
 
-            <div className="grid gap-3 text-red-400/60">
-              <LeaderList
-                title="most reported (all time)"
-                rows={mostAllTime}
-                rightValue={(r) => String(r.reports_total ?? 0)}
-              />
-              <LeaderList
-                title="most new reports (7 days)"
-                rows={most7d}
-                rightValue={(r) => String(r.reports_7d ?? 0)}
-              />
-              <LeaderList
-                title="nicest (good %)"
-                rows={nicest}
-                rightValue={(r) => `${r.good_pct ?? 0}%`}
-              />
+  {/* OUTSIDE BORDER STARTS HERE (under Today's Heat) */}
+  <aside className="border border-red-800/80 rounded-lg p-4 mt-2">
+    {/* Watchlist header row */}
+    <div className="flex items-center justify-between mb-3">
+      <div className="font-semibold text-[24px] text-red-400/80 flex items-center gap-2">
+        <svg
+          className="h-6 w-6"
+          viewBox="0 0 24 24"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+        >
+          <path
+            d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+          />
+          <path
+            d="M12 10.6c.8 0 1.4.6 1.4 1.4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+        Speranza Watchlist
+      </div>
 
-              <div className="text-[11px] text-red-300/80">
-                note: “nicest” requires at least 5 reports.
-              </div>
-            </div>
-            </aside>
-            </div>
-        </div>
+      <button
+        onClick={loadLeaderboards}
+        disabled={loadingBoards}
+        className="text-xs h-8 px-2 border border-red-800/80 rounded
+                   text-red-300/60 hover:bg-red-900/20 disabled:opacity-50
+                   flex items-center"
+      >
+        {loadingBoards ? "loading..." : "refresh"}
+      </button>
+    </div>
+
+    {/* Watchlist boxes */}
+    <div className="grid gap-3 text-red-400/60">
+      <LeaderList
+        title="most reported (all time)"
+        rows={mostAllTime}
+        rightValue={(r) => String(r.reports_total ?? 0)}
+      />
+      <LeaderList
+        title="most new reports (7 days)"
+        rows={most7d}
+        rightValue={(r) => String(r.reports_7d ?? 0)}
+      />
+      <LeaderList
+        title="nicest (good %)"
+        rows={nicest}
+        rightValue={(r) => `${r.good_pct ?? 0}%`}
+      />
+
+      <div className="text-[11px] text-red-300/80">
+        note: “nicest” requires at least 5 reports.
+      </div>
+    </div>
+  </aside>
+</div>
+</div></div>
 
         {status ? (
           <div className="mt-6 text-xs text-red-300/80">{status}</div>

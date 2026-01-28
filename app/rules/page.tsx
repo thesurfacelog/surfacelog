@@ -149,9 +149,13 @@ export default function RulesPage() {
             </ul>
           </div>
 
-          <p className="text-xs text-green-400/70 leading-relaxed">
-            You can request deletion of your account data by contacting the site admin (add your contact method later),
-            but logs you posted may remain if needed for integrity/audit or to prevent abuse. (You can refine this policy.)
+          <p className="text-xs text-red-400/70 leading-relaxed">
+            You can request deletion of your account data by contacting the site admin at{" "} 
+            <a
+            href="mailto:thesurfacelog@gmail.com"
+            className="underline hover:text-green-200"
+            > thesurfacelog@gmail.com</a>
+          . Submitted logs may remain if necessary for integrity, abuse prevention, or audit purposes. Contact is intended for site issues, data requests, or policy questions- not disputes over individual reports.
           </p>
         </section>
 
@@ -166,6 +170,27 @@ export default function RulesPage() {
           </p>
         </section>
 
+        <div className="mt-8 rounded border border-green-700/30 bg-black/60 px-4 py-3 text-sm text-green-200/70 leading-relaxed">
+  <div className="font-semibold text-green-200/85 mb-2">What’s coming</div>
+
+  <ul className="list-disc list-inside space-y-1">
+    <li>Improved search and filtering</li>
+    <li>Optional photo/video evidence uploads for reports (verification help)</li>
+    <li>Additional moderation and transparency tools</li>
+    <li>Better context, clarifications, and disputes</li>
+    <li>Community feedback and reporting improvements</li>
+  </ul>
+
+  <div className="mt-3 text-xs text-yellow-200/50 leading-snug">
+    Development is ongoing and updates are added as time and resources allow.
+    <br />
+    If you find the project useful and want to help cover hosting and development,&nbsp;
+    <a href="/support" className="underline hover:text-green-200">
+      support the project
+    </a>
+    .
+  </div>
+</div>
         <div className="mt-8">
           <Link
             href="/"
