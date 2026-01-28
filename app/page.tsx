@@ -399,7 +399,7 @@ const openDispute = async (logId: string) => {
     href="/new"
     className="text-[16px] font-mono border border-green-700/40 rounded px-3 py-2 hover:bg-green-900/20 transition"
   >
-    + new transmission
+    + new report
   </Link>
 
   <div className="text-[11px] text-yellow-400/70 text-right max-w-[160px] leading-snug">
@@ -639,7 +639,8 @@ const openDispute = async (logId: string) => {
     </div>
   </aside>
 </div>
-</div></div>
+</div>
+</div>
 
         {status ? (
           <div className="mt-6 text-xs text-red-300/80">{status}</div>

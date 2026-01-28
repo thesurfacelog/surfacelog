@@ -74,66 +74,60 @@ export default function NewTransmissionPage() {
     setStatus("");
 
     const trimmedHandle = handle.trim();
+    const trimmedDescription = description.trim();
+
     if (!trimmedHandle) {
       setStatus("Handle is required.");
       setSubmitting(false);
       return;
     }
-    if (!description.trim()) {
+    if (!trimmedDescription) {
       setStatus("Description is required.");
       setSubmitting(false);
       return;
     }
 
     try {
-      // 1) upsert/find handle row
-      const { data: existing, error: findErr } = await supabase
-        .from("handles")
-        .select("id, handle, platform")
-        .eq("handle_normalized", trimmedHandle.toLowerCase())
-        .maybeSingle();
+      // ---- 1) UPSERT handle (prevents duplicate handle errors)
+      const normalized = trimmedHandle.toLowerCase();
+      const platformClean = platform.trim() || null;
 
-      if (findErr) {
-        setStatus(`Handle lookup error: ${findErr.message}`);
-        setSubmitting(false);
+      // IMPORTANT:
+      // This assumes your UNIQUE constraint is on `handle_normalized`.
+      // If your unique constraint is on `handle`, change onConflict to: "handle"
+      // If it's on (handle_normalized, platform), use: "handle_normalized,platform"
+      const { data: handleRow, error: handleErr } = await supabase
+        .from("handles")
+        .upsert(
+          {
+            handle: trimmedHandle,
+            handle_normalized: normalized,
+            platform: platformClean,
+          },
+          { onConflict: "handle_normalized" }
+        )
+        .select("id")
+        .single();
+
+      if (handleErr) {
+        setStatus(`Handle upsert error: ${handleErr.message}`);
         return;
       }
 
-      let handleId = existing?.id as string | undefined;
+      const handleId = String(handleRow.id);
 
-      if (!handleId) {
-        const { data: created, error: createErr } = await supabase
-          .from("handles")
-          .insert({
-            handle: trimmedHandle,
-            handle_normalized: trimmedHandle.toLowerCase(),
-            platform: platform.trim() || null,
-          })
-          .select("id")
-          .single();
-
-        if (createErr) {
-          setStatus(`Handle create error: ${createErr.message}`);
-          setSubmitting(false);
-          return;
-        }
-
-        handleId = created.id;
-      }
-
-      // 2) insert log
+      // ---- 2) Insert log
       const { error: logErr } = await supabase.from("logs").insert({
         handle_id: handleId,
         sentiment,
         severity,
         encounter,
         category,
-        description: description.trim(),
+        description: trimmedDescription,
       });
 
       if (logErr) {
         setStatus(`Submit error: ${logErr.message}`);
-        setSubmitting(false);
         return;
       }
 
@@ -196,17 +190,17 @@ export default function NewTransmissionPage() {
             >
               send magic link
             </button>
+
             <div className="mt-2 text-[16px] text-red-300/90">
-  By signing up / signing in, you agree to the site rules and data policy.
-</div>
+              By signing up / signing in, you agree to the site rules and data policy.
+            </div>
 
-<Link
-  href="/rules"
-  className="inline-flex items-center justify-center text-xs border border-green-700/40 rounded px-3 py-2 hover:bg-green-900/20"
->
-  view rules & disclaimers →
-</Link>
-
+            <Link
+              href="/rules"
+              className="inline-flex items-center justify-center text-xs border border-green-700/40 rounded px-3 py-2 hover:bg-green-900/20"
+            >
+              view rules & disclaimers →
+            </Link>
           </section>
         ) : null}
 
