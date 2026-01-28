@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 
-type Sentiment = "good" | "neutral" | "bad";
-type Severity = "info" | "warning" | "critical";
-type Encounter = "raid" | "squad" | "trade" | "other";
+type Sentiment = "good" | "neutral" | "bad" | "rat";
+type Severity = "info" | "warning" | "critical"; // stored values (DB-safe)
+type Encounter = "spawn_in" | "objective" | "extraction" | "third_party" | "comms" | "other";
 
 export default function NewTransmissionPage() {
   const [email, setEmail] = useState("");
@@ -14,9 +14,11 @@ export default function NewTransmissionPage() {
 
   const [handle, setHandle] = useState("");
   const [platform, setPlatform] = useState<string>("");
+
   const [sentiment, setSentiment] = useState<Sentiment>("neutral");
   const [severity, setSeverity] = useState<Severity>("info");
   const [encounter, setEncounter] = useState<Encounter>("other");
+
   const [category, setCategory] = useState("general");
   const [description, setDescription] = useState("");
 
@@ -230,7 +232,8 @@ export default function NewTransmissionPage() {
             </button>
 
             <div className="mt-2 text-[16px] text-red-300/90">
-              By signing up / signing in, you agree to the site rules and data policy.
+              By signing up / signing in, you agree to the site rules and data
+              policy.
             </div>
 
             <Link
@@ -243,11 +246,11 @@ export default function NewTransmissionPage() {
         ) : null}
 
         <section className="border border-green-700/40 rounded-lg p-4">
-          <div className="text-sm text-green-200/80 mb-3">new transmission</div>
+          <div className="text-sm text-green-200/80 mb-3">new report</div>
 
           {!userEmail ? (
             <div className="text-xs text-green-200/60">
-              sign in to submit transmissions.
+              sign in to submit report.
             </div>
           ) : (
             <div className="grid gap-3">
@@ -266,44 +269,82 @@ export default function NewTransmissionPage() {
                 />
               </div>
 
+              {/* Dropdown row with helper text */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <select
-                  value={sentiment}
-                  onChange={(e) => setSentiment(e.target.value as Sentiment)}
-                  className="bg-black border border-green-700/40 rounded px-2 py-2"
-                >
-                  <option value="good">good</option>
-                  <option value="neutral">neutral</option>
-                  <option value="bad">bad</option>
-                </select>
+                {/* Sentiment */}
+                <div className="flex flex-col gap-1">
+                  <div className="text-green-200/70">sentiment</div>
+                  <div className="text-[11px] text-green-200/50 leading-snug">
+                    How the interaction felt.
+                  </div>
+                  <select
+                    value={sentiment}
+                    onChange={(e) =>
+                      setSentiment(e.target.value as Sentiment)
+                    }
+                    className="bg-black border border-green-700/40 rounded px-2 py-2"
+                  >
+                    <option value="good">good</option>
+                    <option value="neutral">neutral</option>
+                    <option value="bad">bad</option>
+                    <option value="rat">rat</option>
+                  </select>
+                </div>
 
-                <select
-                  value={severity}
-                  onChange={(e) => setSeverity(e.target.value as Severity)}
-                  className="bg-black border border-green-700/40 rounded px-2 py-2"
-                >
-                  <option value="info">info</option>
-                  <option value="warning">warning</option>
-                  <option value="critical">critical</option>
-                </select>
+                {/* Risk level (Severity) */}
+                <div className="flex flex-col gap-1">
+                  <div className="text-green-200/70">risk level</div>
+                  <div className="text-[11px] text-green-200/50 leading-snug">
+                    How serious this is for others.
+                  </div>
+                  <select
+                    value={severity}
+                    onChange={(e) =>
+                      setSeverity(e.target.value as Severity)
+                    }
+                    className="bg-black border border-green-700/40 rounded px-2 py-2"
+                  >
+                    <option value="info">FYI</option>
+                    <option value="warning">Caution</option>
+                    <option value="critical">High Risk</option>
+                  </select>
+                </div>
 
-                <select
-                  value={encounter}
-                  onChange={(e) => setEncounter(e.target.value as Encounter)}
-                  className="bg-black border border-green-700/40 rounded px-2 py-2"
-                >
-                  <option value="raid">raid</option>
-                  <option value="squad">squad</option>
-                  <option value="trade">trade</option>
-                  <option value="other">other</option>
-                </select>
+                {/* Encounter */}
+                <div className="flex flex-col gap-1">
+                  <div className="text-green-200/70">encounter</div>
+                  <div className="text-[11px] text-green-200/50 leading-snug">
+                    Where it happened.
+                  </div>
+                  <select
+                    value={encounter}
+                    onChange={(e) =>
+                      setEncounter(e.target.value as Encounter)
+                    }
+                    className="bg-black border border-green-700/40 rounded px-2 py-2"
+                  >
+                    <option value="spawn_in">spawn in</option>
+                    <option value="objective">objective</option>
+                    <option value="extraction">extraction</option>
+                    <option value="third_party">third party</option>
+                    <option value="comms">comms</option>
+                    <option value="other">other</option>
+                  </select>
+                </div>
 
-                <input
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  placeholder="category"
-                  className="bg-black border border-green-700/40 rounded px-2 py-2 outline-none"
-                />
+                {/* Category */}
+                <div className="flex flex-col gap-1">
+                  <div className="text-green-200/70">category</div>
+                  <div className="text-[11px] text-green-200/50 leading-snug">
+                    Short tag (e.g., comms, griefing).
+                  </div>
+                  <input
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    placeholder="general"
+                    className="bg-black border border-green-700/40 rounded px-2 py-2 outline-none"
+                  />
+                </div>
               </div>
 
               <textarea
